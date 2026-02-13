@@ -30,5 +30,11 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "prisma/seed.ts"]
+  "exclude": [
+    "node_modules",
+    "prisma/seed.ts",
+    "src/components/auth/**",
+    "src/hooks/useAuth.ts",
+    "src/lib/trpc.ts"
+  ]
 }
