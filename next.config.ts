@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: ".",
   },
+  // Static export mode
+  output: "export",
   images: {
     remotePatterns: [
       {
