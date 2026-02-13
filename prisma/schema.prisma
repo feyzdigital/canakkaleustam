@@ -1,0 +1,397 @@
+// ===========================================
+// canakkaleustam.com - Prisma Schema
+// ===========================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ===========================================
+// Enum Tanımları
+// ===========================================
+
+enum Role {
+  CUSTOMER
+  CRAFTSMAN
+  ADMIN
+}
+
+enum ServiceRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum PriceUnit {
+  FIXED
+  HOURLY
+  DAILY
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ===========================================
+// Kullanıcı Modelleri
+// ===========================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  password      String
+  phone         String?   @unique
+  phoneVerified Boolean   @default(false)
+  role          Role      @default(CUSTOMER)
+  name          String
+  surname       String
+  avatar        String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // İlişkiler
+  craftsmanProfile    CraftsmanProfile?
+  sentMessages        Message[]            @relation("SentMessages")
+  receivedMessages    Message[]            @relation("ReceivedMessages")
+  customerRequests    ServiceRequest[]     @relation("CustomerRequests")
+  craftsmanRequests   ServiceRequest[]     @relation("CraftsmanRequests")
+  reviews             Review[]             @relation("CustomerReviews")
+  receivedReviews     Review[]             @relation("CraftsmanReviews")
+  notifications       Notification[]
+  phoneVerifications  PhoneVerification[]
+  auditLogs           AuditLog[]
+
+  // NextAuth hesaplar
+  accounts Account[]
+  sessions Session[]
+
+  @@index([email])
+  @@index([phone])
+  @@index([role])
+  @@index([createdAt])
+  @@map("users")
+}
+
+// NextAuth Account modeli
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// NextAuth Session modeli
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ===========================================
+// Usta Profil Modeli
+// ===========================================
+
+model CraftsmanProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  slug            String    @unique
+  businessName    String
+  taxPlateImage   String?   // Vergi levhası görseli URL
+  taxNumber       String?
+  taxVerified     Boolean   @default(false)
+  taxVerifiedAt   DateTime?
+  description     String?
+  bio             String?
+  city            String    @default("Çanakkale")
+  district        String?
+  address         String?
+  latitude        Float?
+  longitude       Float?
+  rating          Float     @default(0)
+  reviewCount     Int       @default(0)
+  isApproved      Boolean   @default(false)
+  approvedAt      DateTime?
+  approvedBy      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // İlişkiler
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categories        CraftsmanCategory[]
+  services          Service[]
+  taxVerifications  TaxVerification[]
+
+  @@index([slug])
+  @@index([rating])
+  @@index([isApproved])
+  @@index([district])
+  @@index([city, district])
+  @@map("craftsman_profiles")
+}
+
+// ===========================================
+// Kategori Modelleri
+// ===========================================
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  icon        String?
+  description String?
+  parentId    String?
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Self-relation (alt kategoriler)
+  parent   Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryToCategory")
+
+  // İlişkiler
+  craftsmen       CraftsmanCategory[]
+  services        Service[]
+  serviceRequests ServiceRequest[]
+
+  @@index([slug])
+  @@index([parentId])
+  @@index([isActive, sortOrder])
+  @@map("categories")
+}
+
+// Many-to-many: Usta <-> Kategori
+model CraftsmanCategory {
+  id           String @id @default(cuid())
+  craftsmanId  String
+  categoryId   String
+
+  craftsman CraftsmanProfile @relation(fields: [craftsmanId], references: [id], onDelete: Cascade)
+  category  Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([craftsmanId, categoryId])
+  @@map("craftsman_categories")
+}
+
+// ===========================================
+// Hizmet Modelleri
+// ===========================================
+
+model Service {
+  id          String    @id @default(cuid())
+  craftsmanId String
+  categoryId  String
+  title       String
+  description String?
+  minPrice    Float?
+  maxPrice    Float?
+  priceUnit   PriceUnit @default(FIXED)
+  duration    String?   // Örn: "1-2 saat", "1 gün"
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // İlişkiler
+  craftsman CraftsmanProfile @relation(fields: [craftsmanId], references: [id], onDelete: Cascade)
+  category  Category         @relation(fields: [categoryId], references: [id])
+
+  @@index([craftsmanId])
+  @@index([categoryId])
+  @@index([isActive])
+  @@map("services")
+}
+
+// ===========================================
+// Hizmet Talep Modeli
+// ===========================================
+
+model ServiceRequest {
+  id            String               @id @default(cuid())
+  customerId    String
+  craftsmanId   String
+  categoryId    String
+  title         String
+  description   String
+  status        ServiceRequestStatus @default(PENDING)
+  address       String?
+  preferredDate DateTime?
+  preferredTime String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  // İlişkiler
+  customer  User     @relation("CustomerRequests", fields: [customerId], references: [id])
+  craftsman User     @relation("CraftsmanRequests", fields: [craftsmanId], references: [id])
+  category  Category @relation(fields: [categoryId], references: [id])
+  reviews   Review[]
+  messages  Message[]
+
+  @@index([customerId])
+  @@index([craftsmanId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("service_requests")
+}
+
+// ===========================================
+// Değerlendirme Modeli
+// ===========================================
+
+model Review {
+  id               String   @id @default(cuid())
+  customerId       String
+  craftsmanId      String
+  serviceRequestId String
+  rating           Int      // 1-5
+  comment          String?
+  isVisible        Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  // İlişkiler
+  customer       User           @relation("CustomerReviews", fields: [customerId], references: [id])
+  craftsman      User           @relation("CraftsmanReviews", fields: [craftsmanId], references: [id])
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+
+  @@unique([customerId, serviceRequestId])
+  @@index([craftsmanId])
+  @@index([rating])
+  @@index([createdAt])
+  @@map("reviews")
+}
+
+// ===========================================
+// Mesajlaşma Modeli
+// ===========================================
+
+model Message {
+  id               String   @id @default(cuid())
+  senderId         String
+  receiverId       String
+  serviceRequestId String?
+  content          String
+  isRead           Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  // İlişkiler
+  sender         User            @relation("SentMessages", fields: [senderId], references: [id])
+  receiver       User            @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([serviceRequestId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+// ===========================================
+// Doğrulama Modelleri
+// ===========================================
+
+model PhoneVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  phone     String
+  code      String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // İlişkiler
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([phone, code])
+  @@index([expiresAt])
+  @@map("phone_verifications")
+}
+
+model TaxVerification {
+  id              String             @id @default(cuid())
+  craftsmanId     String
+  taxNumber       String
+  taxPlateImage   String
+  status          VerificationStatus @default(PENDING)
+  rejectionReason String?
+  verifiedBy      String?
+  verifiedAt      DateTime?
+  createdAt       DateTime           @default(now())
+
+  // İlişkiler
+  craftsman CraftsmanProfile @relation(fields: [craftsmanId], references: [id], onDelete: Cascade)
+
+  @@index([craftsmanId])
+  @@index([status])
+  @@map("tax_verifications")
+}
+
+// ===========================================
+// Sistem Modelleri
+// ===========================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  data      Json?
+  createdAt DateTime @default(now())
+
+  // İlişkiler
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  // İlişkiler
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
