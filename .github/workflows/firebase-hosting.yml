@@ -18,8 +18,6 @@ jobs:
         run: npm ci
       - name: Build Next.js
         run: npm run build
-      - name: Export static HTML
-        run: npx next export -o out
       - name: Install Firebase Tools
         run: npm install -g firebase-tools
       - name: Deploy to Firebase Hosting
